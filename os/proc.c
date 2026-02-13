@@ -33,7 +33,16 @@ void proc_init(void)
 		p->trapframe = (struct trapframe *)trapframe[p - pool];
 		/*
 		* LAB1: you may need to initialize your new fields of proc here
+		* I imagine the idea here is to create the structure for task info and initialize the three values
+		* The syscall times = 0
+		* The time = 0 (You would not initialize the starting time for the process here b/c it isn't running yet)
+		* Then, when something here changes, these values will change accordingly where the change happens
+		* IMPORTANT: This functions job is to prepare the area for where a process may go. None of this information belongs to a process yet, just the allocated space
 		*/
+		p->starttime = -1;
+		for (int i = 0; i < 500; i++){
+			p->syscall_times[i] = 0;
+		}
 	}
 	idle.kstack = (uint64)boot_stack_top;
 	idle.pid = 0;
@@ -83,7 +92,11 @@ void scheduler(void)
 			if (p->state == RUNNABLE) {
 				/*
 				* LAB1: you may need to init proc start time here
+				* Im not sure if this is a different variable for the general start time of a process, 
+				* but if it is then this would always be the reference value for getting the total time running
+				* Might need to use the ricv r_time() function instead
 				*/
+				p->starttime = get_time()
 				p->state = RUNNING;
 				current_proc = p;
 				swtch(&idle.context, &p->context);

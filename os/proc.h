@@ -38,6 +38,8 @@ struct proc {
 	/*
 	* LAB1: you may need to add some new fields here
 	*/
+	uint64 starttime; // The process starttime when scheduled
+	unisgned int syscall_times[500] // Array for tracking amount of calls for a sys_call
 };
 
 /*
