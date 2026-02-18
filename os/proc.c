@@ -33,16 +33,9 @@ void proc_init(void)
 		p->trapframe = (struct trapframe *)trapframe[p - pool];
 		/*
 		* LAB1: you may need to initialize your new fields of proc here
-		* I imagine the idea here is to create the structure for task info and initialize the three values
-		* The syscall times = 0
-		* The time = 0 (You would not initialize the starting time for the process here b/c it isn't running yet)
-		* Then, when something here changes, these values will change accordingly where the change happens
 		* IMPORTANT: This functions job is to prepare the area for where a process may go. None of this information belongs to a process yet, just the allocated space
 		*/
-		p->starttime = -1;
-		for (int i = 0; i < 500; i++){
-			p->syscall_times[i] = 0;
-		}
+		memset(p->syscall_times, 0, sizeof(p->syscall_times));
 	}
 	idle.kstack = (uint64)boot_stack_top;
 	idle.pid = 0;
@@ -76,6 +69,7 @@ found:
 	memset((void *)p->kstack, 0, PAGE_SIZE);
 	p->context.ra = (uint64)usertrapret;
 	p->context.sp = p->kstack + PAGE_SIZE;
+	p->start_time = r_time();
 	return p;
 }
 
@@ -92,11 +86,7 @@ void scheduler(void)
 			if (p->state == RUNNABLE) {
 				/*
 				* LAB1: you may need to init proc start time here
-				* Im not sure if this is a different variable for the general start time of a process, 
-				* but if it is then this would always be the reference value for getting the total time running
-				* Might need to use the ricv r_time() function instead
 				*/
-				p->starttime = get_time()
 				p->state = RUNNING;
 				current_proc = p;
 				swtch(&idle.context, &p->context);
@@ -125,6 +115,34 @@ void yield(void)
 {
 	current_proc->state = RUNNABLE;
 	sched();
+}
+
+TaskStatus translate_state(enum procstate proc_state){
+	TaskStatus proc_status;
+	switch(proc_state){
+	case UNUSED:
+		proc_status = UnInit;
+		break;
+	case USED:
+		proc_status = Ready;
+		break;
+	case SLEEPING:
+		proc_status = Ready;
+		break;
+	case RUNNABLE:
+		proc_status = Ready;
+		break;
+	case RUNNING:
+		proc_status = Running;
+		break;
+	case ZOMBIE:
+		proc_status = Exited;
+		break;
+	default:
+		proc_status = UnInit;
+		break;
+	}
+	return proc_status;
 }
 
 // Exit the current process.

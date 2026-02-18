@@ -42,31 +42,17 @@ uint64 sys_gettimeofday(TimeVal *val, int _tz)
 */
 int sys_task_info(TaskInfo *ti)
 {
-	auto proc_state = current_proc()->state;
-	switch(proc_state){
-	case UNUSED:
-		ti->status = UnInit;
-		break;
-	case USED:
-		ti->status = Ready;
-		break;
-	case RUNNABLE:
-		ti->status = Ready;
-		break;
-	case SLEEPING:
-		ti->status = Ready;
-		break;
-	case RUNNING:
-		ti->status = Running;
-		break;
-	case ZOMBIE:
-		ti->status = Exited;
-		break;
+	TaskInfo *proc_ti = (TaskInfo *)ti;
+	proc_ti->status = translate_state(curr_proc()->state);
+	for (int i = 0; i < 500; i++){
+		proc_ti->syscall_times[i] = curr_proc()->syscall_times[i];
 	}
 
-	ti->
-
-
+	uint64 ms_curr_time = (get_cycle() % CPU_FREQ) * 1000 / CPU_FREQ;
+	uint64 ms_start_time = (curr_proc()->start_time % CPU_FREQ) * 1000 / CPU_FREQ;
+	proc_ti->time = ms_curr_time - ms_start_time;
+	
+	return 0;
 }
 
 extern char trap_page[];
@@ -84,27 +70,27 @@ void syscall()
 	*/
 	switch (id) {
 	case SYS_write:
+		curr_proc()->syscall_times[SYS_write] += 1;
 		ret = sys_write(args[0], (char *)args[1], args[2]);
-		current_proc()->syscall_times[SYS_write] += 1
 		break;
 	case SYS_exit:
 		sys_exit(args[0]);
 		// __builtin_unreachable();
 	case SYS_sched_yield:
+		curr_proc()->syscall_times[SYS_sched_yield] += 1;
 		ret = sys_sched_yield();
-		current_proc()->syscall_times[SYS_sched_yield] += 1
 		break;
 	case SYS_gettimeofday:
+		curr_proc()->syscall_times[SYS_gettimeofday] += 1;
 		ret = sys_gettimeofday((TimeVal *)args[0], args[1]);
-		current_proc()->syscall_times[SYS_gettimeofday] += 1
 		break;
 	/*
 	* LAB1: you may need to add SYS_taskinfo case here
 	* Here is where we are delatgating the system call to the correct function
 	*/
 	case SYS_task_info:
+		curr_proc()->syscall_times[SYS_task_info] += 1;
 		ret = sys_task_info((TaskInfo *)args[0]);
-		current_proc()->syscall_times[SYS_task_info] += 1
 		break;
 	default:
 		ret = -1;
