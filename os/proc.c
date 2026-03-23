@@ -33,6 +33,7 @@ void proc_init(void)
 		/*
 		* LAB1: you may need to initialize your new fields of proc here
 		*/
+		memset(p->syscall_times, 0, sizeof(p->syscall_times));
 	}
 	idle.kstack = (uint64)boot_stack_top;
 	idle.pid = 0;
@@ -69,6 +70,7 @@ found:
 	memset((void *)p->trapframe, 0, TRAP_PAGE_SIZE);
 	p->context.ra = (uint64)usertrapret;
 	p->context.sp = p->kstack + KSTACK_SIZE;
+	p->start_time = r_time();
 	return p;
 }
 
@@ -121,6 +123,36 @@ void freeproc(struct proc *p)
 	p->state = UNUSED;
 	// uvmfree(p->pagetable, p->max_page);
 }
+
+
+TaskStatus translate_state(enum procstate proc_state){
+	TaskStatus proc_status;
+	switch(proc_state){
+	case UNUSED:
+		proc_status = UnInit;
+		break;
+	case USED:
+		proc_status = Ready;
+		break;
+	case SLEEPING:
+		proc_status = Ready;
+		break;
+	case RUNNABLE:
+		proc_status = Ready;
+		break;
+	case RUNNING:
+		proc_status = Running;
+		break;
+	case ZOMBIE:
+		proc_status = Exited;
+		break;
+	default:
+		proc_status = UnInit;
+		break;
+	}
+	return proc_status;
+}
+
 
 // Exit the current process.
 void exit(int code)
