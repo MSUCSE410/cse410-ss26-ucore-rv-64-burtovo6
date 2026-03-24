@@ -57,37 +57,95 @@ uint64 sys_gettimeofday(TimeVal *val, int _tz) // TODO: implement sys_gettimeofd
 uint64 sys_mmap(uint64 start, uint64 len, int port, int flag, int fd)
 {
 	//Check if the address is page aligned
-	if (PGALIGNED(start))
+	if (!PGALIGNED(start))
 		return -1;
-	
-	// Round up len to nearest page
-	// This function may only be for pages but the idea stands
-	len = PGROUNDUP(len);
 
-	//Check if the virtual memory range[start, start+len] is occupied by something else the process is using
-	// Might just need to walk through from start to start + len and check if everything is 0
+	// Round up len to nearest page
+	len = PGROUNDUP(len);
+	if (len > MAXVA) // MAXVA is in riscv.h
+		return -1;
+
+	//Check if the virtual memory range has nothing valid present
+	for (uint64 i = start; i < start + len; i += PAGE_SIZE)
+	{
+		// From the walk function, PTE_V is the valid bit, meaning an assignment has already been made in this area
+		if (walkaddr(curr_proc()->pagetable, i) != 0)
+			return -1;
+	}
+
+	// From the project slides
+	if ((port & ~0x7) != 0)
+		return -1;
+	if ((port & 0x7) == 0)
+		return -1;
+
+	//Define Permissions based on port
+	//Check if this is somewhere besides riscv.h
+	uint64 pte_flags = PTE_V | PTE_U;
+	if (port & 1)
+		pte_flags |= PTE_R;
+	if (port & 2)
+		pte_flags |= PTE_W;
+	if (port & 4)
+		pte_flags |= PTE_X;
 
 	//Calculate how many pages are needed
-	// Need to find where this could be, they will ask where I found this. At least the page_size - 1
-	int numOfPages = (len + PAGE_SIZE - 1) / PAGE_SIZE;
+	// I dont think (len + PAGE_SIZE - 1) is needed if len is already page aligned
+	int numPages = len / PAGE_SIZE;
 
 	//Allocate the physical pages
-	void *pages [numOfPages];
-	for (int i = 0; i < numOfPages; i++)
+	//Try to rewrite this, maybe my method of the array will work I am not sure
+	uint64 va = start;
+	for (int i = 0; i < numPages; i++)
 	{
-		pages[i] = kalloc();
+		void *mem = kalloc();
+		if (mem == 0)
+		{
+			return -1;
+		}
+		memset(mem, 0, PAGE_SIZE);
+
+		uint64 pa = (uint64)mem;
+
+		if(mappages(curr_proc()->pagetable, va, PAGE_SIZE, pa, pte_flags) != 0){
+			kfree(mem);
+			return -1;
+		}
+
+		va += PAGE_SIZE;
 	}
 
-	//Call mappages() with all the new physical pages and the virtual addresses from start to start+len
-	pagetable_t proc_pg = curr_proc()->pagetable;
-	for (int i = 0; i < numOfPages; i++)
-	{
-		mappages(proc_pg, start + (i*PAGE_SIZE), (uint64)pages[i], PAGE_SIZE, 1);
-	}
 	return 0;
 }
 
+uint64 sys_munmap(uint64 start, uint64 len)
+{
+	//Check if the address is page aligned
+	if (!PGALIGNED(start))
+		return -1;
 
+	// Round up len to nearest page
+	len = PGROUNDUP(len);
+	if (len > MAXVA) // MAXVA is in riscv.h its 1GiB as 1 << 30
+		return -1;
+
+	// Check [start, start+len] to make sure that no unmapped info exists in the space.
+	//We check the validity of the page table entries, making sure nothing invalid is present
+	for (uint64 i = start; i < start + len; i += PAGE_SIZE)
+	{
+		// If the function returns 0 then that va is unmapped
+		if (walkaddr(curr_proc()->pagetable, i) == 0)
+			return -1;
+	}
+
+	//Calculate how many pages are needed
+	int numPages = len / PAGE_SIZE;
+
+	// Unmap npages from the starting va
+	uvmunmap(curr_proc()->pagetable, start, numPages, 1);
+
+	return 0;
+}
 
 int sys_task_info(TaskInfo *ti)
 {
@@ -103,11 +161,9 @@ int sys_task_info(TaskInfo *ti)
 		proc_ti->syscall_times[i] = curr_proc()->syscall_times[i];
 	}
 
-	//uint64 ms_curr_time = (get_cycle() % CPU_FREQ) * 1000 / CPU_FREQ;
-	uint64 ms_start_time = (curr_proc()->start_time % CPU_FREQ) * 1000 / CPU_FREQ;
-	proc_ti->time = ms_start_time;
-	//- ms_start_time;
-	
+	// This change is because of the "modulo sawtooth" when start_time and current_time are on different second marks
+	uint64 total_cycles = get_cycle() - curr_proc()->start_time;
+	proc_ti->time = (total_cycles * 1000) / CPU_FREQ;
 	return 0;
 }
 
@@ -137,6 +193,14 @@ void syscall()
 	case SYS_gettimeofday:
 		curr_proc()->syscall_times[SYS_gettimeofday] += 1;
 		ret = sys_gettimeofday((TimeVal *)args[0], args[1]);
+		break;
+	case SYS_munmap:
+		curr_proc()->syscall_times[SYS_munmap] += 1;
+		ret = sys_munmap(args[0], args[1]);
+		break;
+	case SYS_mmap:
+		curr_proc()->syscall_times[SYS_mmap] += 1;
+		ret = sys_mmap(args[0], args[1], args[2], args[3], args[4]);
 		break;
 	case SYS_task_info:
 		curr_proc()->syscall_times[SYS_task_info] += 1;
