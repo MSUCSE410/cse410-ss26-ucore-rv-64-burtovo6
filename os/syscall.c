@@ -61,26 +61,24 @@ uint64 sys_mmap(uint64 start, uint64 len, int port, int flag, int fd)
 		return -1;
 
 	// Round up len to nearest page
-	len = PGROUNDUP(len);
-	if (len > MAXVA) // MAXVA is in riscv.h
+	uint64 aligned_len = PGROUNDUP(len);
+	if (aligned_len > MAXVA) // MAXVA is in riscv.h
 		return -1;
 
 	//Check if the virtual memory range has nothing valid present
-	for (uint64 i = start; i < start + len; i += PAGE_SIZE)
+	for (uint64 i = start; i < start + aligned_len; i += PAGE_SIZE)
 	{
-		// From the walk function, PTE_V is the valid bit, meaning an assignment has already been made in this area
 		if (walkaddr(curr_proc()->pagetable, i) != 0)
 			return -1;
 	}
 
-	// From the project slides
+	// Check if the given permissions are valid
 	if ((port & ~0x7) != 0)
 		return -1;
 	if ((port & 0x7) == 0)
 		return -1;
 
 	//Define Permissions based on port
-	//Check if this is somewhere besides riscv.h
 	uint64 pte_flags = PTE_V | PTE_U;
 	if (port & 1)
 		pte_flags |= PTE_R;
@@ -90,25 +88,21 @@ uint64 sys_mmap(uint64 start, uint64 len, int port, int flag, int fd)
 		pte_flags |= PTE_X;
 
 	//Calculate how many pages are needed
-	// I dont think (len + PAGE_SIZE - 1) is needed if len is already page aligned
-	int numPages = len / PAGE_SIZE;
+	int numPages = aligned_len / PAGE_SIZE;
 
 	//Allocate the physical pages
-	//Try to rewrite this, maybe my method of the array will work I am not sure
 	uint64 va = start;
 	for (int i = 0; i < numPages; i++)
 	{
 		void *mem = kalloc();
+
+		// Error check for insufficient memory
 		if (mem == 0)
-		{
 			return -1;
-		}
+
 		memset(mem, 0, PAGE_SIZE);
 
-		uint64 pa = (uint64)mem;
-
-		if(mappages(curr_proc()->pagetable, va, PAGE_SIZE, pa, pte_flags) != 0){
-			kfree(mem);
+		if(mappages(curr_proc()->pagetable, va, PAGE_SIZE, (uint64)mem, pte_flags) != 0){
 			return -1;
 		}
 
@@ -125,13 +119,12 @@ uint64 sys_munmap(uint64 start, uint64 len)
 		return -1;
 
 	// Round up len to nearest page
-	len = PGROUNDUP(len);
-	if (len > MAXVA) // MAXVA is in riscv.h its 1GiB as 1 << 30
+	uint64 aligned_len = PGROUNDUP(len);
+	if (aligned_len > MAXVA)
 		return -1;
 
-	// Check [start, start+len] to make sure that no unmapped info exists in the space.
-	//We check the validity of the page table entries, making sure nothing invalid is present
-	for (uint64 i = start; i < start + len; i += PAGE_SIZE)
+	//Check if the virtual memory range has nothing invalid present
+	for (uint64 i = start; i < start + aligned_len; i += PAGE_SIZE)
 	{
 		// If the function returns 0 then that va is unmapped
 		if (walkaddr(curr_proc()->pagetable, i) == 0)
@@ -139,7 +132,7 @@ uint64 sys_munmap(uint64 start, uint64 len)
 	}
 
 	//Calculate how many pages are needed
-	int numPages = len / PAGE_SIZE;
+	int numPages = aligned_len / PAGE_SIZE;
 
 	// Unmap npages from the starting va
 	uvmunmap(curr_proc()->pagetable, start, numPages, 1);
