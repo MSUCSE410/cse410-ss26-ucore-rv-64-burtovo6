@@ -102,6 +102,7 @@ uint64 sys_mmap(uint64 start, uint64 len, int port, int flag, int fd)
 
 		memset(mem, 0, PAGE_SIZE);
 
+		// Maps a virtual address page to a physical address page
 		if(mappages(curr_proc()->pagetable, va, PAGE_SIZE, (uint64)mem, pte_flags) != 0){
 			return -1;
 		}
