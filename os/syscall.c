@@ -73,9 +73,9 @@ uint64 sys_mmap(uint64 start, uint64 len, int port, int flag, int fd)
 	}
 
 	// Check if the given permissions are valid
-	if ((port & ~0x7) != 0)
+	if ((port & ~0x7) != 0) // Makes sure every bit besides the first 7 are zero
 		return -1;
-	if ((port & 0x7) == 0)
+	if ((port & 0x7) == 0) // Makes sure the important 7 bits aren't all 0
 		return -1;
 
 	//Define Permissions based on port
